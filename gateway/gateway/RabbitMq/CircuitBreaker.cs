@@ -3,10 +3,11 @@
     public class CircuitBreakerOptions
     {
         public int FailureThreshold { get; set; } = 2; 
-        public int TimeoutSeconds { get; set; } = 20; 
+        public int TimeoutSeconds { get; set; } = 60; 
     }
     public class CircuitBreaker
     {
+        public Timer timer;
         private int _failureCount = 0;
         private readonly int _failureThreshold;
         private readonly TimeSpan _timeout;
@@ -23,6 +24,7 @@
         {
             if (_isOpen && DateTime.UtcNow - _lastFailureTime > _timeout)
             {
+                timer.Change(TimeSpan.Zero, TimeSpan.FromDays(2));
                 _isOpen = false;
                 _failureCount = 0;
             }
@@ -36,6 +38,7 @@
 
             if (_failureCount >= _failureThreshold)
             {
+                timer.Change(TimeSpan.Zero, TimeSpan.FromSeconds(5));
                 _isOpen = true;
             }
         }

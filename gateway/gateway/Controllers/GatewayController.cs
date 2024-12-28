@@ -29,16 +29,13 @@ namespace gateway.Controllers
         private static readonly CircuitBreaker _circuitBreakerPay
             = new CircuitBreaker(3, TimeSpan.FromSeconds(75));
 
-        private readonly Timer _healthCheckResTimer;
-        private readonly Timer _healthCheckLoyTimer;
-        private readonly Timer _healthCheckPayTimer;
         public GatewayController(IHttpClientFactory clientFactory)
         {
             _clientFactory = clientFactory;
             username = "Test Max";
-            _healthCheckResTimer = new Timer(async _ => await CheckHealth_Reservation(), null, TimeSpan.Zero, TimeSpan.FromSeconds(2));
-            _healthCheckLoyTimer = new Timer(async _ => await CheckHealth_Loyalty(), null, TimeSpan.Zero, TimeSpan.FromSeconds(2));
-            _healthCheckPayTimer = new Timer(async _ => await CheckHealth_Payment(), null, TimeSpan.Zero, TimeSpan.FromSeconds(2));
+            _circuitBreakerRes.timer = new Timer(async _ => await CheckHealth_Reservation(), null, TimeSpan.Zero, TimeSpan.FromDays(2));
+            _circuitBreakerLoy.timer = new Timer(async _ => await CheckHealth_Loyalty(), null, TimeSpan.Zero, TimeSpan.FromDays(2));
+            _circuitBreakerPay.timer = new Timer(async _ => await CheckHealth_Payment(), null, TimeSpan.Zero, TimeSpan.FromDays(2));
 
         }
         private async Task CheckHealth_Reservation()
@@ -58,7 +55,7 @@ namespace gateway.Controllers
             }
             catch (Exception)
             {
-
+                _circuitBreakerRes.RegisterFailure();
             }
         }
         private async Task CheckHealth_Loyalty()
@@ -71,13 +68,13 @@ namespace gateway.Controllers
                 if (response.IsSuccessStatusCode)
                 {
                         Console.WriteLine($"Loyalty is working after " +
-                            $"{(DateTime.UtcNow - _circuitBreakerRes._lastFailureTime).TotalSeconds}");
-                        _circuitBreakerRes.RegisterSuccess();
+                            $"{(DateTime.UtcNow - _circuitBreakerLoy._lastFailureTime).TotalSeconds}");
+                        _circuitBreakerLoy.RegisterSuccess();
                 }
             }
             catch (Exception)
             {
-
+                _circuitBreakerLoy.RegisterFailure();
             }
         }
         private async Task CheckHealth_Payment()
@@ -90,14 +87,14 @@ namespace gateway.Controllers
                 if (response.IsSuccessStatusCode)
                 {
                     Console.WriteLine($"Payment is working after " +
-                        $"{(DateTime.UtcNow - _circuitBreakerRes._lastFailureTime).TotalSeconds}");
-                    _circuitBreakerRes.RegisterSuccess();
+                        $"{(DateTime.UtcNow - _circuitBreakerPay._lastFailureTime).TotalSeconds}");
+                    _circuitBreakerPay.RegisterSuccess();
 
                 }
             }
             catch (Exception)
             {
-
+                _circuitBreakerPay.RegisterFailure();
             }
         }
 
@@ -168,7 +165,6 @@ namespace gateway.Controllers
                 }
 
                 _circuitBreakerRes.RegisterFailure();
-                //EnqueueFailedRequest(page, size);
                 return StatusCode((int)response.StatusCode);
             }
             catch (Exception)
@@ -194,13 +190,21 @@ namespace gateway.Controllers
 
             var client = _clientFactory.CreateClient();
             client.DefaultRequestHeaders.Add("X-User-Name", username);
+            System.Net.Http.HttpResponseMessage response;
+            try 
+            { 
+                 response = await client.GetAsync($"http://reservation:8060/api/v1/reservations");
+            }
+            catch (Exception ex)
+            {
+                _circuitBreakerRes.RegisterFailure();
+                return StatusCode(StatusCodes.Status505HttpVersionNotsupported);
+            }
 
 
-            var response = await client.GetAsync($"http://reservation:8060/api/v1/reservations");
             if (!response.IsSuccessStatusCode)
             {
                 _circuitBreakerRes.RegisterFailure();
-                //EnqueueFailedRequest(page, size);
                 return StatusCode(StatusCodes.Status505HttpVersionNotsupported);
             }
             else
@@ -216,39 +220,53 @@ namespace gateway.Controllers
             {
                 if (!_hotels.ContainsKey(item.hotelUid.ToString()) && !_circuitBreakerRes.IsOpen())
                 {
-                    var response1 = await client.GetAsync($"http://reservation:8060/api/v1/hotels/{item.hotelUid}");
-                    if (response1.IsSuccessStatusCode)
+                    System.Net.Http.HttpResponseMessage response1;
+                    try
                     {
-                        _circuitBreakerRes.RegisterSuccess();
-                        var content1 = await response1.Content.ReadAsStringAsync();
-                        _hotels[item.hotelUid.ToString()] = JsonSerializer.Deserialize<hotel>(content1);
-                        Console.WriteLine($"    hotelUid: {item.hotelUid}");
+                        response1 = await client.GetAsync($"http://reservation:8060/api/v1/hotels/{item.hotelUid}");
+                        if (response1.IsSuccessStatusCode)
+                        {
+                            _circuitBreakerRes.RegisterSuccess();
+                            var content1 = await response1.Content.ReadAsStringAsync();
+                            _hotels[item.hotelUid.ToString()] = JsonSerializer.Deserialize<hotel>(content1);
+                            Console.WriteLine($"    hotelUid: {item.hotelUid}");
+                        }
+                        else
+                        {
+                            _circuitBreakerRes.RegisterFailure();
+                        }
                     }
-                    else
-                    {
-                        //Console.WriteLine($"====response 1 failed for hotelUid: {item.hotelUid}");
-                        //return NotFound();
+                    catch {
                         _circuitBreakerRes.RegisterFailure();
-                        //EnqueueFailedRequest();
                     }
+                    
+                   
                 }
                 if (!_payments.ContainsKey(item.paymentUid.ToString()) && !_circuitBreakerPay.IsOpen())
                 {
-                    var response3 = await client.GetAsync($"http://payment:8050/api/v1/payment/{item.paymentUid}");
-                    Console.WriteLine($"    paymentUUid: {item.paymentUid}");
-                    if (!response3.IsSuccessStatusCode)
+                    System.Net.Http.HttpResponseMessage response3;
+                    try
                     {
-                        //Console.WriteLine("====response 2");
-                        //return NotFound();
+                        response3 = await client.GetAsync($"http://payment:8050/api/v1/payment/{item.paymentUid}");
+                        Console.WriteLine($"    paymentUUid: {item.paymentUid}");
+                        if (!response3.IsSuccessStatusCode)
+                        {
+
+                            _circuitBreakerPay.RegisterFailure();
+                        }
+                        else
+                        {
+                            _circuitBreakerPay.RegisterSuccess();
+                            var content3 = await response3.Content.ReadAsStringAsync();
+                            _payments[item.paymentUid.ToString()] = JsonSerializer.Deserialize<payment>(content3);
+                        }
+                    }
+                    catch
+                    {
                         _circuitBreakerPay.RegisterFailure();
-                        //EnqueueFailedRequest();
+                        continue;
                     }
-                    else
-                    {
-                        _circuitBreakerPay.RegisterSuccess();
-                        var content3 = await response3.Content.ReadAsStringAsync();
-                        _payments[item.paymentUid.ToString()] = JsonSerializer.Deserialize<payment>(content3);
-                    }
+                    
 
                 }
             }
@@ -256,7 +274,7 @@ namespace gateway.Controllers
             var result = content.Select(item => new
             {
                 reservationUid = item.reservationUid,
-                hotel =  _hotels.Count == 0? null : new
+                hotel = _hotels.Count == 0 ? null : new
                 {
                     hotelUid = _hotels[item.hotelUid.ToString()].hotelUid,
                     name = _hotels[item.hotelUid.ToString()].name,
@@ -273,13 +291,10 @@ namespace gateway.Controllers
                     price = _payments[item.paymentUid.ToString()].price
                 }
             }).ToList();
-            return Ok(result);
+            return Ok(result); 
+            
             
         }
-
-
-
-
 
         [HttpGet("/api/v1/reservations/{reservationUid}")]
         public async Task<IActionResult> CheckReservateMe(Guid reservationUid)
@@ -287,82 +302,125 @@ namespace gateway.Controllers
 
             var client = _clientFactory.CreateClient();
             client.DefaultRequestHeaders.Add("X-User-Name", username);
-            var response = await client.GetAsync($"http://reservation:8060/api/v1/reservation/{reservationUid}");
-            var content = await response.Content.ReadFromJsonAsync<reservation>();
-
-            var response2 = await client.GetAsync($"http://reservation:8060/api/v1/hotels/{content.hotelUid}");
-            var content2 = await response2.Content.ReadAsStringAsync();
-            if (!response2.IsSuccessStatusCode)
+            System.Net.Http.HttpResponseMessage response;
+            reservation? content;
+            try
             {
-                Console.WriteLine("====response 2");
-                Console.WriteLine($"{content.hotelUid}");
-                return NotFound();
-            }
-            hotel _hotel = JsonSerializer.Deserialize<hotel>(content2);
-
-
-
-            var response3 = await client.GetAsync($"http://payment:8050/api/v1/payment/{content.paymentUid}");
-
-            if (!response3.IsSuccessStatusCode)
-            {
-                Console.WriteLine("====response 3");
-                return NotFound();
-            }
-            var content3 = await response3.Content.ReadAsStringAsync();
-            payment payment = JsonSerializer.Deserialize<payment>(content3);
-
-            if (response.IsSuccessStatusCode)
-            {
-                return Ok(new
+                response = await client.GetAsync($"http://reservation:8060/api/v1/reservation/{reservationUid}");
+                content = await response.Content.ReadFromJsonAsync<reservation>();
+                if (!response.IsSuccessStatusCode)
                 {
-                    hotel = new {
-                        hotelUid = content.hotelUid,
-                        name = _hotel.name,
-                        fullAddress = _hotel.country +", "+
-                        _hotel.city+", " +
-                        _hotel.address,
-                        stars = _hotel.stars
-                    },
-                    reservationUid = content.reservationUid,
-                    startDate = content.startDate.ToString("yyyy-MM-dd"),
-                    endDate = content.endDate.ToString("yyyy-MM-dd"),
-                    status = content.status,
-                    payment = new
-                    {
-                        status = payment.status,
-                        price = payment.price
-                    }
-
-                });
+                    _circuitBreakerRes.RegisterFailure();
+                    return StatusCode(StatusCodes.Status505HttpVersionNotsupported);
+                }
+                else
+                    _circuitBreakerRes.RegisterSuccess();
             }
+            catch
+            {
+                _circuitBreakerRes.RegisterFailure();
+                return StatusCode(StatusCodes.Status505HttpVersionNotsupported);
 
-            return NotFound();
+            }
+            System.Net.Http.HttpResponseMessage response2;
+            string? content2;
+            hotel? _hotel;
+            try
+            {
+                response2 = await client.GetAsync($"http://reservation:8060/api/v1/hotels/{content.hotelUid}");
+                content2 = await response2.Content.ReadAsStringAsync();
+                if (!response2.IsSuccessStatusCode)
+                {
+                    _hotel = null;
+                    _circuitBreakerRes.RegisterFailure();
+                }
+                else
+                {
+                    _circuitBreakerRes.RegisterSuccess();
+                    _hotel = JsonSerializer.Deserialize<hotel>(content2);
+                }
+            }
+            catch
+            {
+                _circuitBreakerRes.RegisterFailure();
+                _hotel = null;
+            }
+            payment? payment;
+            try
+            {
+                var response3 = await client.GetAsync($"http://payment:8050/api/v1/payment/{content.paymentUid}");
+                var content3 = await response3.Content.ReadAsStringAsync();
+                if (!response3.IsSuccessStatusCode)
+                {
+                    payment = null;
+                    _circuitBreakerPay.RegisterFailure();
+                }
+                else {
+                    _circuitBreakerPay.RegisterSuccess();
+                    payment = JsonSerializer.Deserialize<payment>(content3);
+                }
+            }
+            catch {
+                payment = null;
+                
+            }
+            return Ok(new
+            {
+                hotel = _hotel == null ? null : new
+                {
+                    hotelUid = content.hotelUid,
+                    name = _hotel.name,
+                    fullAddress = _hotel.country +", "+
+                    _hotel.city+", " +
+                    _hotel.address,
+                    stars = _hotel.stars
+                },
+                reservationUid = content.reservationUid,
+                startDate = content.startDate.ToString("yyyy-MM-dd"),
+                endDate = content.endDate.ToString("yyyy-MM-dd"),
+                status = content.status,
+                payment = payment == null ? null : new
+                {
+                    status = payment.status,
+                    price = payment.price
+                }
+
+            });
         }
         [HttpGet("api/v1/loyalty")]
         public async Task<IActionResult> GetLoyalty()
         {
-
+            
             var client = _clientFactory.CreateClient();
             client.DefaultRequestHeaders.Add("X-User-Name", username);
-            var response = await client.GetAsync(
-                $"http://loyalty:8070/api/v1/loyalty");
-            var content = await response.Content.ReadFromJsonAsync<loyalty>();
-
-
-            if (response.IsSuccessStatusCode)
+            try
             {
-                var result = new
+                var response = await client.GetAsync(
+                $"http://loyalty:8070/api/v1/loyalty");
+                var content = await response.Content.ReadFromJsonAsync<loyalty>();
+
+
+                if (response.IsSuccessStatusCode)
                 {
-                    status = content.status,
-                    discount = content.discount,
-                    reservationCount = content.reservationCount,
-                };
-                return Ok(result);
+                    _circuitBreakerLoy.RegisterSuccess();
+                    var result = new
+                    {
+                        status = content.status,
+                        discount = content.discount,
+                        reservationCount = content.reservationCount,
+                    };
+                    return Ok(result);
 
+                }
+                else
+                    _circuitBreakerLoy.RegisterFailure();
             }
-
-            return StatusCode((int)response.StatusCode, content);
+            catch (Exception ex)
+            {
+                _circuitBreakerLoy.RegisterFailure();
+                
+            }
+            return StatusCode(StatusCodes.Status505HttpVersionNotsupported);
         }
 
         [HttpPost("/api/v1/reservations")]
@@ -508,59 +566,94 @@ namespace gateway.Controllers
         {
             var client = _clientFactory.CreateClient();
             client.DefaultRequestHeaders.Add("X-User-Name", username);
-            var response = await client.GetAsync($"http://reservation:8060/api/v1/reservations");
-            var content = await response.Content.ReadFromJsonAsync<reservation[]>();
-
+            reservation?[] content;
+            System.Net.Http.HttpResponseMessage response;
+            try
+            {
+                response = await client.GetAsync($"http://reservation:8060/api/v1/reservations");
+                content = await response.Content.ReadFromJsonAsync<reservation[]>();
+                _circuitBreakerRes.RegisterSuccess();
+            }
+            catch
+            {
+                content = null;
+                _circuitBreakerRes.RegisterFailure();
+            }
             var _hotels = new Dictionary<string, hotel>();
             var _payments = new Dictionary<string, payment>();
 
+            if (content != null)
             foreach (var item in content)
             {
-                if (!_hotels.ContainsKey(item.hotelUid.ToString()))
+                if (!_hotels.ContainsKey(item.hotelUid.ToString()) && !_circuitBreakerRes.IsOpen())
                 {
-                    var response1 = await client.GetAsync($"http://reservation:8060/api/v1/hotels/{item.hotelUid}");
-                    if (response1.IsSuccessStatusCode)
+                    System.Net.Http.HttpResponseMessage response1;
+                    try
                     {
-                        var content1 = await response1.Content.ReadAsStringAsync();
-                        _hotels[item.hotelUid.ToString()] = JsonSerializer.Deserialize<hotel>(content1);
+                        response1 = await client.GetAsync($"http://reservation:8060/api/v1/hotels/{item.hotelUid}");
+                        if (response1.IsSuccessStatusCode)
+                        {
+                            _circuitBreakerRes.RegisterSuccess();
+                            var content1 = await response1.Content.ReadAsStringAsync();
+                            _hotels[item.hotelUid.ToString()] = JsonSerializer.Deserialize<hotel>(content1);
+                            Console.WriteLine($"    hotelUid: {item.hotelUid}");
+                        }
+                        else
+                        {
+                            _circuitBreakerRes.RegisterFailure();
+                        }
                     }
-                    else
+                    catch
                     {
-                        Console.WriteLine($"====response 1 failed for hotelUid: {item.hotelUid}");
-                        return NotFound();
+                        _circuitBreakerRes.RegisterFailure();
                     }
-                }
-                if (!_payments.ContainsKey(item.paymentUid.ToString()))
-                {
-                    var response3 = await client.GetAsync($"http://payment:8050/api/v1/payment/{item.paymentUid}");
-                    Console.WriteLine($"    paymentUUid: {item.paymentUid}");
-                    if (!response3.IsSuccessStatusCode)
-                    {
-                        Console.WriteLine("====response 2");
-                        return NotFound();
-                    }
-                    var content3 = await response3.Content.ReadAsStringAsync();
-                    _payments[item.paymentUid.ToString()] = JsonSerializer.Deserialize<payment>(content3);
+
 
                 }
+                if (!_payments.ContainsKey(item.paymentUid.ToString()) && !_circuitBreakerPay.IsOpen())
+                {
+                    System.Net.Http.HttpResponseMessage response3;
+                    try
+                    {
+                        response3 = await client.GetAsync($"http://payment:8050/api/v1/payment/{item.paymentUid}");
+                        Console.WriteLine($"    paymentUUid: {item.paymentUid}");
+                        if (!response3.IsSuccessStatusCode)
+                        {
 
+                            _circuitBreakerPay.RegisterFailure();
+                        }
+                        else
+                        {
+                            _circuitBreakerPay.RegisterSuccess();
+                            var content3 = await response3.Content.ReadAsStringAsync();
+                            _payments[item.paymentUid.ToString()] = JsonSerializer.Deserialize<payment>(content3);
+                        }
+                    }
+                    catch
+                    {
+                        _circuitBreakerPay.RegisterFailure();
+                        continue;
+                    }
+                }
+            }
+            System.Net.Http.HttpResponseMessage response4;
+            loyalty? content4 = null ;
+            try {
+                response4 = await client.GetAsync(
+                   $"http://loyalty:8070/api/v1/loyalty");
+                content4 = await response4.Content.ReadFromJsonAsync<loyalty>();
+                _circuitBreakerLoy.RegisterSuccess();
+            } 
+            catch {
+                _circuitBreakerLoy.RegisterFailure();
             }
 
-            var response4 = await client.GetAsync(
-                $"http://loyalty:8070/api/v1/loyalty");
-            var content4 = await response4.Content.ReadFromJsonAsync<loyalty>();
-
-
-
-
-                if (response.IsSuccessStatusCode)
-            {
                 var result = new
                 {
-                    reservations = content.Select(item => new
+                    reservations = content == null? null: content.Select(item => new
                     {
                         reservationUid = item.reservationUid,
-                        hotel = new
+                        hotel = _hotels.Count == 0 ? null : new
                         {
                             hotelUid = _hotels[item.hotelUid.ToString()].hotelUid,
                             name = _hotels[item.hotelUid.ToString()].name,
@@ -571,21 +664,21 @@ namespace gateway.Controllers
                         startDate = item.startDate.ToString("yyyy-MM-dd"),
                         endDate = item.endDate.ToString("yyyy-MM-dd"),
                         status = item.status,
-                        payment = new
+                       
+                        payment = _payments.Count == 0 ? null : new
                         {
                             status = _payments[item.paymentUid.ToString()].status,
                             price = _payments[item.paymentUid.ToString()].price
                         }
                     }).ToList(),
-                    loyalty = new
+                    loyalty = content4 == null ? null : new
                     {
                         status = content4.status,
                         discount = content4.discount
                     }
                 };
-                return Ok(result)
-                    ;
-            }
+            return Ok(result);
+
 
             return StatusCode((int)response.StatusCode, content);
         }
