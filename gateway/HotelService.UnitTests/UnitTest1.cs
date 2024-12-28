@@ -17,12 +17,14 @@ namespace HotelService.UnitTests
     public class GatewayControllerTests
     {
         private readonly Mock<IHttpClientFactory> _httpClientFactoryMock;
+        private readonly Mock<RabbitMqService> _rbtMock;
         private readonly GatewayController _controller;
 
         public GatewayControllerTests()
         {
             _httpClientFactoryMock = new Mock<IHttpClientFactory>();
-            _controller = new GatewayController(_httpClientFactoryMock.Object);
+            _rbtMock = new Mock<RabbitMqService>();
+            _controller = new GatewayController(_httpClientFactoryMock.Object, _rbtMock.Object);
         }
 
         private HttpClient CreateMockHttpClient(HttpResponseMessage response)

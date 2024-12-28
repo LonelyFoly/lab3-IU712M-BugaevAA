@@ -159,7 +159,7 @@ namespace gateway.Controllers
                 return StatusCode(500);
             }
         }
-
+        
         [HttpGet("/api/v1/reservations")]
         public async Task<IActionResult> ReservateMe()
         {
@@ -403,6 +403,7 @@ namespace gateway.Controllers
         }
 
         [HttpPost("/api/v1/reservations")]
+        [Produces("application/json")]
         public async Task<IActionResult> PostReservation([FromBody] DateForm df)
         {
             TimeSpan difference = df.endDate- df.startDate;
@@ -464,7 +465,7 @@ namespace gateway.Controllers
             catch
             {
                 _rabbitMqService.SendCancelPaymentMessage(paymentUid.ToString());
-                return StatusCode(503);
+                return StatusCode(503, new { message = "Loyalty Service unavailable" });
             }
             Guid reservationUid = Guid.NewGuid();
             json = JsonSerializer.Serialize(new reservation(
