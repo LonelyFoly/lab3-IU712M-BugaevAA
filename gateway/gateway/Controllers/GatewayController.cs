@@ -18,6 +18,8 @@ namespace gateway.Controllers
         private readonly IHttpClientFactory _clientFactory;
 
         string username;
+
+        int timer_seconds = 10;
         private static readonly CircuitBreaker _circuitBreakerRes
             = new CircuitBreaker(3, TimeSpan.FromSeconds(10));
         private static readonly CircuitBreaker _circuitBreakerLoy
@@ -106,6 +108,7 @@ namespace gateway.Controllers
         //rabbitMQ
         private void EnqueueFailedRequest(int page, int size)
         {
+            
             var factory = new ConnectionFactory() { HostName = "rabbitmq", Port = 5672 };
             using var connection = factory.CreateConnection();
             using var channel = connection.CreateModel();
