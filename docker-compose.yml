@@ -12,9 +12,60 @@ services:
       - db-data:/var/lib/postgresql/data
       - ./postgres/:/docker-entrypoint-initdb.d/
     ports:
-      - "5432:5432"
+      - "5438:5432"
 
-# TODO добавить сервисы
+  gateway:
+    image: gateway-image
+    build:
+      context: ./gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      - payment
+      - reservation
+      - loyalty
+      - rabbitmq
+
+  payment:
+    image: payment-image
+    build:
+      context: ./payment
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Development"  
+      ASPNETCORE_URLS: "http://0.0.0.0:8050"
+    ports:
+      - "8050:8050"
+
+  reservation:
+    image: reservation-image
+    hostname: reservation
+    build:
+      context: ./reservation
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Development"  
+      ASPNETCORE_URLS: "http://0.0.0.0:8060"
+    ports:
+      - "8060:8060"
+
+  loyalty:
+    image: loyalty-image
+    hostname: loyalty
+    build:
+      context: ./loyalty
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Development"  
+      ASPNETCORE_URLS: "http://0.0.0.0:8070"
+    ports:
+      - "8070:8070"
+  rabbitmq:
+    image: "rabbitmq:3-management"
+    ports:
+     - "15672:15672"  
+     - "5672:5672" 
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest   
+
 
 volumes:
   db-data:

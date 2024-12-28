@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.8.34309.116
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "gateway", "gateway\gateway.csproj", "{70266A7D-293B-4A4A-B42B-4DA6BE547561}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HotelService.UnitTests", "HotelService.UnitTests\HotelService.UnitTests.csproj", "{90F645B8-DA2A-4576-9B2F-1AB36176E79A}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{70266A7D-293B-4A4A-B42B-4DA6BE547561}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{70266A7D-293B-4A4A-B42B-4DA6BE547561}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{70266A7D-293B-4A4A-B42B-4DA6BE547561}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{70266A7D-293B-4A4A-B42B-4DA6BE547561}.Release|Any CPU.Build.0 = Release|Any CPU
+		{90F645B8-DA2A-4576-9B2F-1AB36176E79A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{90F645B8-DA2A-4576-9B2F-1AB36176E79A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{90F645B8-DA2A-4576-9B2F-1AB36176E79A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{90F645B8-DA2A-4576-9B2F-1AB36176E79A}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {D8E52A25-B44F-4B7D-A723-D580472AEAFA}
+	EndGlobalSection
+EndGlobal
