@@ -391,7 +391,7 @@ namespace gateway.Controllers
                 else
                 {
                     _circuitBreakerLoy.RegisterFailure();
-                    return StatusCode(503);
+                    return StatusCode(503, new { message = "Loyalty Service unavailable" });
                 }
             }
             catch (Exception ex)
@@ -399,7 +399,7 @@ namespace gateway.Controllers
                 _circuitBreakerLoy.RegisterFailure();
                 
             }
-            return StatusCode(503);
+            return StatusCode(503, new { message = "Loyalty Service unavailable" });
         }
 
         [HttpPost("/api/v1/reservations")]

@@ -21,7 +21,7 @@ public class RabbitMqService: IRabbitMqService
         Console.WriteLine($"Sent to rabbit{message}");
         // var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message));
 
-        var factory = new ConnectionFactory() { HostName = "kebnekaise", Port = 5672 };
+        var factory = new ConnectionFactory { Uri = new Uri("amqps://ksspkpds:FjJbWVFDglHNI_9l1IuFUuGr3ax2v8Sq@kebnekaise.lmq.cloudamqp.com/ksspkpds") };
         using (var connection = factory.CreateConnection())
         using (var channel = connection.CreateModel())
         {
