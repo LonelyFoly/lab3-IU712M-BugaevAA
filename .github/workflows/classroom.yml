@@ -38,8 +38,8 @@ jobs:
         run: ./scripts/test-script.sh
         env:
           VARIANT: v2
-          SERVICE_NAME: gateway
-          PORT_NUMBER: 8080
+          SERVICE_NAME: loyalty
+          PORT_NUMBER: 8070
 
       - name: Stop containers
         if: always()

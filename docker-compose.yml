@@ -24,6 +24,7 @@ services:
       - payment
       - reservation
       - loyalty
+      - rabbitmq
 
   payment:
     image: payment-image
@@ -34,6 +35,8 @@ services:
       ASPNETCORE_URLS: "http://0.0.0.0:8050"
     ports:
       - "8050:8050"
+    depends_on:
+      - rabbitmq
 
   reservation:
     image: reservation-image
@@ -45,6 +48,8 @@ services:
       ASPNETCORE_URLS: "http://0.0.0.0:8060"
     ports:
       - "8060:8060"
+    depends_on:
+      - rabbitmq
 
   loyalty:
     image: loyalty-image
@@ -56,6 +61,9 @@ services:
       ASPNETCORE_URLS: "http://0.0.0.0:8070"
     ports:
       - "8070:8070"
+    depends_on:
+      - rabbitmq
+
   rabbitmq:
     image: "rabbitmq:3-management"
     ports:
