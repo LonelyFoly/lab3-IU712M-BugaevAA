@@ -10,6 +10,7 @@ using gateway.RabbitMq;
 using RabbitMQ.Client;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using System.Drawing;
+using System.Net.NetworkInformation;
 
 namespace gateway.Controllers
 {
@@ -103,21 +104,6 @@ namespace gateway.Controllers
         {
             return Ok();
         }
-        //rabbitMQ
-/*        private void EnqueueFailedRequest(int page, int size)
-        {
-            
-            var factory = new ConnectionFactory() { HostName = "rabbitmq", Port = 5672 };
-            using var connection = factory.CreateConnection();
-            using var channel = connection.CreateModel();
-
-            channel.QueueDeclare(queue: "failed-requests", durable: true, exclusive: false, autoDelete: false, arguments: null);
-
-            var request = new { page, size };
-            var body = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(request);
-
-            channel.BasicPublish(exchange: "", routingKey: "failed-requests", basicProperties: null, body: body);
-        }*/
 
         [HttpGet("/api/v1/hotels")]
         public async Task<IActionResult> ProxyReservationService([FromQuery] int page, [FromQuery] int size)
@@ -170,9 +156,6 @@ namespace gateway.Controllers
             catch (Exception)
             {
                 _circuitBreakerRes.RegisterFailure();
-                //EnqueueFailedRequest(page, size);
-
-                // fallback: если ошибка, возвращаем пустой ответ
                 return StatusCode(500);
             }
         }
@@ -180,8 +163,6 @@ namespace gateway.Controllers
         [HttpGet("/api/v1/reservations")]
         public async Task<IActionResult> ReservateMe()
         {
-
-
             var client = _clientFactory.CreateClient();
             client.DefaultRequestHeaders.Add("X-User-Name", username);
             System.Net.Http.HttpResponseMessage response;
@@ -409,7 +390,7 @@ namespace gateway.Controllers
                 else
                 {
                     _circuitBreakerLoy.RegisterFailure();
-                    return StatusCode(500);
+                    return StatusCode(503);
                 }
             }
             catch (Exception ex)
@@ -417,7 +398,7 @@ namespace gateway.Controllers
                 _circuitBreakerLoy.RegisterFailure();
                 
             }
-            return StatusCode(500);
+            return StatusCode(503);
         }
 
         [HttpPost("/api/v1/reservations")]
@@ -439,7 +420,7 @@ namespace gateway.Controllers
             } catch (Exception ex)
             {
 
-                return StatusCode(500);
+                return StatusCode(503);
             }
                
             hotel _hotel = JsonSerializer.Deserialize<hotel>(content);
@@ -482,7 +463,7 @@ namespace gateway.Controllers
             catch
             {
                 _rabbitMqService.SendCancelPaymentMessage(paymentUid.ToString());
-                return StatusCode(500);
+                return StatusCode(503);
             }
             Guid reservationUid = Guid.NewGuid();
             json = JsonSerializer.Serialize(new reservation(
@@ -693,7 +674,7 @@ namespace gateway.Controllers
                             price = _payments[item.paymentUid.ToString()].price
                         }
                     }).ToList(),
-                    loyalty = content4 == null ? null : new
+                    loyalty = content4 == null ? new { status = "", discount = 0} : new
                     {
                         status = content4.status,
                         discount = content4.discount
