@@ -544,8 +544,7 @@ namespace gateway.Controllers
                 var jsonMessage = JsonSerializer.Serialize(message);
                 var body = Encoding.UTF8.GetBytes(jsonMessage);
                 Console.WriteLine($"Sent to rabbit{body}");
-
-                using (var connection = new ConnectionFactory { HostName = "kebnekaise", Port = 5672 }.CreateConnection())
+                using (var connection = new ConnectionFactory { Uri = new Uri("amqps://ksspkpds:FjJbWVFDglHNI_9l1IuFUuGr3ax2v8Sq@kebnekaise.lmq.cloudamqp.com/ksspkpds") }.CreateConnection())
                 using (var channel = connection.CreateModel())
                 {
 
@@ -561,7 +560,7 @@ namespace gateway.Controllers
                 Console.WriteLine($"Ошибка отправки в RabbitMQ: {ex.Message}");
             }
 
-            // 4. Завершаем запрос
+
             return NoContent();
         }
 
