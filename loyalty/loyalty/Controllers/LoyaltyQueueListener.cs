@@ -18,7 +18,7 @@ namespace loyalty.Controllers
         {
             this._clientFactory = clientFactory;
             Console.WriteLine($"Rabbit declared");
-            factory = new ConnectionFactory { HostName = "rabbitmq", Port = 5672 };
+            factory = new ConnectionFactory { HostName = "kebnekaise", Port = 5672 };
            _connection = factory.CreateConnection();
             _channel = _connection.CreateModel();
             _channel.QueueDeclare(queue: "LoyaltyQueue", durable: true, exclusive: false, autoDelete: false, arguments: null);

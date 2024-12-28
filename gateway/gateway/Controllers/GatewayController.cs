@@ -562,7 +562,7 @@ namespace gateway.Controllers
                 var body = Encoding.UTF8.GetBytes(jsonMessage);
                 Console.WriteLine($"Sent to rabbit{body}");
 
-                using (var connection = new ConnectionFactory { HostName = "rabbitmq", Port = 5672 }.CreateConnection())
+                using (var connection = new ConnectionFactory { HostName = "kebnekaise", Port = 5672 }.CreateConnection())
                 using (var channel = connection.CreateModel())
                 {
 
