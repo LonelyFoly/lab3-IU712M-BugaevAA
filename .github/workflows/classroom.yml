@@ -32,7 +32,11 @@ jobs:
           WAIT_PORTS: 8080,8070,8060,8050
 
       # TODO setup variant, service and port
+      - name: Build Test Project
+        run: dotnet build ./gateway/HotelService.UnitTests/HotelService.UnitTests.csproj --configuration Release
 
+      - name: Run Unit Tests
+        run: dotnet test ./gateway/HotelService.UnitTests/HotelService.UnitTests.csproj --logger "trx;LogFileName=test-results.trx"
       - name: Run API Tests
         timeout-minutes: 5
         run: ./scripts/test-script.sh

@@ -363,6 +363,7 @@ namespace gateway.Controllers
             });
         }
         [HttpGet("api/v1/loyalty")]
+        [Produces("application/json")]
         public async Task<IActionResult> GetLoyalty()
         {
             
@@ -674,7 +675,7 @@ namespace gateway.Controllers
                             price = _payments[item.paymentUid.ToString()].price
                         }
                     }).ToList(),
-                    loyalty = content4 == null ? new { status = "", discount = 0} : new
+                    loyalty = content4 == null ? new object() : new
                     {
                         status = content4.status,
                         discount = content4.discount
