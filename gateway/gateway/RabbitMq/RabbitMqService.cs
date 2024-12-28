@@ -80,7 +80,7 @@ namespace gateway.RabbitMq
             await Task.CompletedTask;
         }
 
-        // Метод для постановки в очередь неудачных запросов
+
         private void EnqueueFailedRequest(int page, int size)
         {
             var factory = new ConnectionFactory() { HostName = "rabbitmq", Port = 5672 };

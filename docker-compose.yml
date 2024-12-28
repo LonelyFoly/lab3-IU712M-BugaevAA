@@ -24,7 +24,6 @@ services:
       - payment
       - reservation
       - loyalty
-      - rabbitmq
 
   payment:
     image: payment-image

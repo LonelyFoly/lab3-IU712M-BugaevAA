@@ -8,6 +8,8 @@ using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using gateway.RabbitMq;
 using RabbitMQ.Client;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+using System.Drawing;
 
 namespace gateway.Controllers
 {
@@ -19,13 +21,13 @@ namespace gateway.Controllers
 
         string username;
 
-        int timer_seconds = 10;
+
         private static readonly CircuitBreaker _circuitBreakerRes
-            = new CircuitBreaker(3, TimeSpan.FromSeconds(10));
+            = new CircuitBreaker(3, TimeSpan.FromSeconds(75));
         private static readonly CircuitBreaker _circuitBreakerLoy
-            = new CircuitBreaker(3, TimeSpan.FromSeconds(10));
+            = new CircuitBreaker(3, TimeSpan.FromSeconds(75));
         private static readonly CircuitBreaker _circuitBreakerPay
-            = new CircuitBreaker(3, TimeSpan.FromSeconds(10));
+            = new CircuitBreaker(3, TimeSpan.FromSeconds(75));
 
         private readonly Timer _healthCheckResTimer;
         private readonly Timer _healthCheckLoyTimer;
@@ -34,9 +36,9 @@ namespace gateway.Controllers
         {
             _clientFactory = clientFactory;
             username = "Test Max";
-            _healthCheckResTimer = new Timer(async _ => await CheckHealth_Reservation(), null, TimeSpan.Zero, TimeSpan.FromSeconds(10));
-            _healthCheckLoyTimer = new Timer(async _ => await CheckHealth_Loyalty(), null, TimeSpan.Zero, TimeSpan.FromSeconds(10));
-            _healthCheckPayTimer = new Timer(async _ => await CheckHealth_Payment(), null, TimeSpan.Zero, TimeSpan.FromSeconds(10));
+            _healthCheckResTimer = new Timer(async _ => await CheckHealth_Reservation(), null, TimeSpan.Zero, TimeSpan.FromSeconds(2));
+            _healthCheckLoyTimer = new Timer(async _ => await CheckHealth_Loyalty(), null, TimeSpan.Zero, TimeSpan.FromSeconds(2));
+            _healthCheckPayTimer = new Timer(async _ => await CheckHealth_Payment(), null, TimeSpan.Zero, TimeSpan.FromSeconds(2));
 
         }
         private async Task CheckHealth_Reservation()
@@ -48,10 +50,10 @@ namespace gateway.Controllers
 
                 if (response.IsSuccessStatusCode)
                 {
-                    if (_circuitBreakerRes._isOpen)
-                        Console.WriteLine($"Reservation is working after " +
-                            $"{(DateTime.UtcNow - _circuitBreakerRes._lastFailureTime).TotalSeconds}");
+                    Console.WriteLine($"Reservation is working after " +
+                        $"{(DateTime.UtcNow - _circuitBreakerRes._lastFailureTime).TotalSeconds}");
                     _circuitBreakerRes.RegisterSuccess();
+
                 }
             }
             catch (Exception)
@@ -68,10 +70,9 @@ namespace gateway.Controllers
 
                 if (response.IsSuccessStatusCode)
                 {
-                    if (_circuitBreakerRes._isOpen)
                         Console.WriteLine($"Loyalty is working after " +
                             $"{(DateTime.UtcNow - _circuitBreakerRes._lastFailureTime).TotalSeconds}");
-                    _circuitBreakerRes.RegisterSuccess();
+                        _circuitBreakerRes.RegisterSuccess();
                 }
             }
             catch (Exception)
@@ -88,10 +89,10 @@ namespace gateway.Controllers
 
                 if (response.IsSuccessStatusCode)
                 {
-                    if (_circuitBreakerRes._isOpen)
-                        Console.WriteLine($"Payment is working after " +
-                            $"{(DateTime.UtcNow - _circuitBreakerRes._lastFailureTime).TotalSeconds}");
+                    Console.WriteLine($"Payment is working after " +
+                        $"{(DateTime.UtcNow - _circuitBreakerRes._lastFailureTime).TotalSeconds}");
                     _circuitBreakerRes.RegisterSuccess();
+
                 }
             }
             catch (Exception)
@@ -106,7 +107,7 @@ namespace gateway.Controllers
             return Ok();
         }
         //rabbitMQ
-        private void EnqueueFailedRequest(int page, int size)
+/*        private void EnqueueFailedRequest(int page, int size)
         {
             
             var factory = new ConnectionFactory() { HostName = "rabbitmq", Port = 5672 };
@@ -119,7 +120,7 @@ namespace gateway.Controllers
             var body = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(request);
 
             channel.BasicPublish(exchange: "", routingKey: "failed-requests", basicProperties: null, body: body);
-        }
+        }*/
 
         [HttpGet("/api/v1/hotels")]
         public async Task<IActionResult> ProxyReservationService([FromQuery] int page, [FromQuery] int size)
@@ -167,13 +168,13 @@ namespace gateway.Controllers
                 }
 
                 _circuitBreakerRes.RegisterFailure();
-                EnqueueFailedRequest(page, size);
+                //EnqueueFailedRequest(page, size);
                 return StatusCode((int)response.StatusCode);
             }
             catch (Exception)
             {
                 _circuitBreakerRes.RegisterFailure();
-                EnqueueFailedRequest(page, size);
+                //EnqueueFailedRequest(page, size);
 
                 // fallback: если ошибка, возвращаем пустой ответ
                 return Ok(new
@@ -189,118 +190,97 @@ namespace gateway.Controllers
         [HttpGet("/api/v1/reservations")]
         public async Task<IActionResult> ReservateMe()
         {
-            if (_circuitBreakerRes.IsOpen())
-            {
-                // fallback если CircuitBreaker открыт
-                return Ok(new
-                {
-                    reservations = new List<object>()
-                });
-            }
+
 
             var client = _clientFactory.CreateClient();
             client.DefaultRequestHeaders.Add("X-User-Name", username);
-            var response = await client.GetAsync($"http://reservation:8060/api/v1/reservations");
 
+
+            var response = await client.GetAsync($"http://reservation:8060/api/v1/reservations");
             if (!response.IsSuccessStatusCode)
             {
                 _circuitBreakerRes.RegisterFailure();
-                EnqueueFailedRequest("reservations", username); // Добавляем запрос в очередь на повтор
-                return StatusCode((int)response.StatusCode);
+                //EnqueueFailedRequest(page, size);
+                return StatusCode(StatusCodes.Status505HttpVersionNotsupported);
             }
+            else
+                _circuitBreakerRes.RegisterSuccess();
 
             var content = await response.Content.ReadFromJsonAsync<reservation[]>();
+
 
             var _hotels = new Dictionary<string, hotel>();
             var _payments = new Dictionary<string, payment>();
 
             foreach (var item in content)
             {
-                var hotel = await GetHotelInfo(client, item.hotelUid);
-                if (hotel == null)
+                if (!_hotels.ContainsKey(item.hotelUid.ToString()) && !_circuitBreakerRes.IsOpen())
                 {
-                    _circuitBreakerRes.RegisterFailure();
-                    EnqueueFailedRequest("hotel", item.hotelUid.ToString()); 
-                    return NotFound();
+                    var response1 = await client.GetAsync($"http://reservation:8060/api/v1/hotels/{item.hotelUid}");
+                    if (response1.IsSuccessStatusCode)
+                    {
+                        _circuitBreakerRes.RegisterSuccess();
+                        var content1 = await response1.Content.ReadAsStringAsync();
+                        _hotels[item.hotelUid.ToString()] = JsonSerializer.Deserialize<hotel>(content1);
+                        Console.WriteLine($"    hotelUid: {item.hotelUid}");
+                    }
+                    else
+                    {
+                        //Console.WriteLine($"====response 1 failed for hotelUid: {item.hotelUid}");
+                        //return NotFound();
+                        _circuitBreakerRes.RegisterFailure();
+                        //EnqueueFailedRequest();
+                    }
                 }
-
-                var payment = await GetPaymentInfo(client, item.paymentUid);
-                if (payment == null)
+                if (!_payments.ContainsKey(item.paymentUid.ToString()) && !_circuitBreakerPay.IsOpen())
                 {
-                    _circuitBreakerRes.RegisterFailure();
-                    EnqueueFailedRequest("payment", item.paymentUid.ToString()); 
-                    return NotFound();
-                }
+                    var response3 = await client.GetAsync($"http://payment:8050/api/v1/payment/{item.paymentUid}");
+                    Console.WriteLine($"    paymentUUid: {item.paymentUid}");
+                    if (!response3.IsSuccessStatusCode)
+                    {
+                        //Console.WriteLine("====response 2");
+                        //return NotFound();
+                        _circuitBreakerPay.RegisterFailure();
+                        //EnqueueFailedRequest();
+                    }
+                    else
+                    {
+                        _circuitBreakerPay.RegisterSuccess();
+                        var content3 = await response3.Content.ReadAsStringAsync();
+                        _payments[item.paymentUid.ToString()] = JsonSerializer.Deserialize<payment>(content3);
+                    }
 
-                _hotels[item.hotelUid.ToString()] = hotel;
-                _payments[item.paymentUid.ToString()] = payment;
+                }
             }
-
+            //Console.WriteLine($"Quantity of HOTELS: {_hotels.Count}");
             var result = content.Select(item => new
             {
                 reservationUid = item.reservationUid,
-                hotel = new
+                hotel =  _hotels.Count == 0? null : new
                 {
                     hotelUid = _hotels[item.hotelUid.ToString()].hotelUid,
                     name = _hotels[item.hotelUid.ToString()].name,
-                    fullAddress = $"{_hotels[item.hotelUid.ToString()].country}, {_hotels[item.hotelUid.ToString()].city}, {_hotels[item.hotelUid.ToString()].address}",
+                    fullAddress = _hotels[item.hotelUid.ToString()].country + ", " + _hotels[item.hotelUid.ToString()].city + ", " + _hotels[item.hotelUid.ToString()].address,
                     stars = _hotels[item.hotelUid.ToString()].stars,
                 },
+
                 startDate = item.startDate.ToString("yyyy-MM-dd"),
                 endDate = item.endDate.ToString("yyyy-MM-dd"),
                 status = item.status,
-                payment = new
+                payment = _payments.Count == 0 ? null : new
                 {
                     status = _payments[item.paymentUid.ToString()].status,
                     price = _payments[item.paymentUid.ToString()].price
                 }
             }).ToList();
-
-            _circuitBreakerRes.RegisterSuccess(); // Успешная обработка
-
             return Ok(result);
+            
         }
 
 
-        private async Task<hotel> GetHotelInfo(HttpClient client, Guid hotelUid)
-        {
-            var response = await client.GetAsync($"http://reservation:8060/api/v1/hotels/{hotelUid}");
-            if (response.IsSuccessStatusCode)
-            {
-                var content = await response.Content.ReadAsStringAsync();
-                return JsonSerializer.Deserialize<hotel>(content);
-            }
-
-            return null;
-        }
 
 
-        private async Task<payment> GetPaymentInfo(HttpClient client, Guid paymentUid)
-        {
-            var response = await client.GetAsync($"http://payment:8050/api/v1/payment/{paymentUid}");
-            if (response.IsSuccessStatusCode)
-            {
-                var content = await response.Content.ReadAsStringAsync();
-                return JsonSerializer.Deserialize<payment>(content);
-            }
 
-            return null; 
-        }
-
-        // Метод для постановки в очередь неудачных запросов
-        private void EnqueueFailedRequest(string type, string identifier)
-        {
-            var factory = new ConnectionFactory() { HostName = "rabbitmq", Port = 5672 };
-            using var connection = factory.CreateConnection();
-            using var channel = connection.CreateModel();
-
-            channel.QueueDeclare(queue: "failed-requests", durable: true, exclusive: false, autoDelete: false, arguments: null);
-
-            var request = new { type, identifier };
-            var body = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(request);
-
-            channel.BasicPublish(exchange: "", routingKey: "failed-requests", basicProperties: null, body: body);
-        }
         [HttpGet("/api/v1/reservations/{reservationUid}")]
         public async Task<IActionResult> CheckReservateMe(Guid reservationUid)
         {
