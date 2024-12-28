@@ -19,8 +19,8 @@ namespace reservation.DB
             
             // Чтение строки подключения из переменной окружения
             string connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
-                                //?? "Host=dpg-ctnh85lds78s73c4rho0-a.oregon-postgres.render.com;Port=5432;Database=postgre_afly;Username=program;Password=k6OUPizpZXrL6r0tRZ1ikZLg9bOxOkPK";
-                                ?? "Host=postgres;Port=5432;Database=postgres;Username=program;Password=test";
+                                ?? "Host=dpg-ctnh85lds78s73c4rho0-a.oregon-postgres.render.com;Port=5432;Database=postgre_afly;Username=program;Password=k6OUPizpZXrL6r0tRZ1ikZLg9bOxOkPK";
+            //?? "Host=postgres;Port=5432;Database=postgres;Username=program;Password=test";
             _connectionString = connectionString;
             Console.WriteLine($"Loaded connection string: {_connectionString}");
             Database.EnsureCreated();
