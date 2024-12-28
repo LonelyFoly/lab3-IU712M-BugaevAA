@@ -21,7 +21,7 @@ namespace gateway.Controllers
 
         string username;
 
-
+        private readonly RabbitMqService _rabbitMqService;
         private static readonly CircuitBreaker _circuitBreakerRes
             = new CircuitBreaker(3, TimeSpan.FromSeconds(75));
         private static readonly CircuitBreaker _circuitBreakerLoy
@@ -29,14 +29,14 @@ namespace gateway.Controllers
         private static readonly CircuitBreaker _circuitBreakerPay
             = new CircuitBreaker(3, TimeSpan.FromSeconds(75));
 
-        public GatewayController(IHttpClientFactory clientFactory)
+        public GatewayController(IHttpClientFactory clientFactory, RabbitMqService rabbitMqService)
         {
             _clientFactory = clientFactory;
             username = "Test Max";
             _circuitBreakerRes.timer = new Timer(async _ => await CheckHealth_Reservation(), null, TimeSpan.Zero, TimeSpan.FromDays(2));
             _circuitBreakerLoy.timer = new Timer(async _ => await CheckHealth_Loyalty(), null, TimeSpan.Zero, TimeSpan.FromDays(2));
             _circuitBreakerPay.timer = new Timer(async _ => await CheckHealth_Payment(), null, TimeSpan.Zero, TimeSpan.FromDays(2));
-
+            _rabbitMqService = rabbitMqService;
         }
         private async Task CheckHealth_Reservation()
         {
@@ -163,9 +163,9 @@ namespace gateway.Controllers
                     };
                     return Ok(result);
                 }
+                else 
+                    return StatusCode(500);
 
-                _circuitBreakerRes.RegisterFailure();
-                return StatusCode((int)response.StatusCode);
             }
             catch (Exception)
             {
@@ -173,13 +173,7 @@ namespace gateway.Controllers
                 //EnqueueFailedRequest(page, size);
 
                 // fallback: если ошибка, возвращаем пустой ответ
-                return Ok(new
-                {
-                    items = new List<object>(),
-                    page,
-                    pageSize = size,
-                    totalElements = 0
-                });
+                return StatusCode(500);
             }
         }
 
@@ -198,14 +192,14 @@ namespace gateway.Controllers
             catch (Exception ex)
             {
                 _circuitBreakerRes.RegisterFailure();
-                return StatusCode(StatusCodes.Status505HttpVersionNotsupported);
+                return StatusCode(500);
             }
 
 
             if (!response.IsSuccessStatusCode)
             {
                 _circuitBreakerRes.RegisterFailure();
-                return StatusCode(StatusCodes.Status505HttpVersionNotsupported);
+                return StatusCode(500);
             }
             else
                 _circuitBreakerRes.RegisterSuccess();
@@ -311,7 +305,7 @@ namespace gateway.Controllers
                 if (!response.IsSuccessStatusCode)
                 {
                     _circuitBreakerRes.RegisterFailure();
-                    return StatusCode(StatusCodes.Status505HttpVersionNotsupported);
+                    return StatusCode(500);
                 }
                 else
                     _circuitBreakerRes.RegisterSuccess();
@@ -319,7 +313,7 @@ namespace gateway.Controllers
             catch
             {
                 _circuitBreakerRes.RegisterFailure();
-                return StatusCode(StatusCodes.Status505HttpVersionNotsupported);
+                return StatusCode(500);
 
             }
             System.Net.Http.HttpResponseMessage response2;
@@ -413,48 +407,45 @@ namespace gateway.Controllers
 
                 }
                 else
+                {
                     _circuitBreakerLoy.RegisterFailure();
+                    return StatusCode(500);
+                }
             }
             catch (Exception ex)
             {
                 _circuitBreakerLoy.RegisterFailure();
                 
             }
-            return StatusCode(StatusCodes.Status505HttpVersionNotsupported);
+            return StatusCode(500);
         }
 
         [HttpPost("/api/v1/reservations")]
         public async Task<IActionResult> PostReservation([FromBody] DateForm df)
         {
             TimeSpan difference = df.endDate- df.startDate;
-
-            // Получаем количество дней
             double totalDays = difference.TotalDays;
-
-                
             var client = _clientFactory.CreateClient();
-            
-            var response = await client.GetAsync($"http://reservation:8060/api/v1/hotels/{df.hotelUid}");
-            var content = await response.Content.ReadAsStringAsync();
-            if (!response.IsSuccessStatusCode)
+            string? content;
+            try
             {
-                Console.WriteLine("====response 1");
-                return NotFound();
+                var response = await client.GetAsync($"http://reservation:8060/api/v1/hotels/{df.hotelUid}");
+                content = await response.Content.ReadAsStringAsync();
+                if (!response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine("====response 1");
+                    return NotFound();
+                }
+            } catch (Exception ex)
+            {
+
+                return StatusCode(500);
             }
+               
             hotel _hotel = JsonSerializer.Deserialize<hotel>(content);
             client.DefaultRequestHeaders.Add("X-User-Name", username);
-            var response2 = await client.GetAsync($"http://loyalty:8070/api/v1/loyalty");
-            var content2 = await response2.Content.ReadAsStringAsync();
 
-
-            if (!response2.IsSuccessStatusCode)
-            {
-                Console.WriteLine("====response 2");
-                return NotFound();
-            }
-                    
-            loyalty _loyalty = JsonSerializer.Deserialize<loyalty>(content2);
-            double q = _loyalty.discount;
+            double q = 10;//_loyalty.discount;
             Console.WriteLine($"q = {q}, _hotel.price= {_hotel.price}," +
                 $"totalDays = {totalDays}");
             int price_sum = Convert.ToInt32 (
@@ -473,17 +464,26 @@ namespace gateway.Controllers
                 Console.WriteLine("====response 3");
                 return NotFound(content3);
             }
-            var response4 = await client.PatchAsync(
-                $"http://loyalty:8070/api/v1/loyaltyInc", null
-                );
-            var content4 = await response4.Content.ReadAsStringAsync();
-            if (!response4.IsSuccessStatusCode)
-            {
-                Console.WriteLine("====response 4");
-                return NotFound();
-            }
 
-            //add reservation
+
+            try
+            {
+                var response4 = await client.PatchAsync(
+                    $"http://loyalty:8070/api/v1/loyaltyInc", null
+                    );
+                var content4 = await response4.Content.ReadAsStringAsync();
+                if (!response4.IsSuccessStatusCode)
+                {
+                    Console.WriteLine("====response 4");
+                    _rabbitMqService.SendCancelPaymentMessage(paymentUid.ToString());
+                    return NotFound();
+                }
+            }
+            catch
+            {
+                _rabbitMqService.SendCancelPaymentMessage(paymentUid.ToString());
+                return StatusCode(500);
+            }
             Guid reservationUid = Guid.NewGuid();
             json = JsonSerializer.Serialize(new reservation(
                 reservationUid,
@@ -506,7 +506,7 @@ namespace gateway.Controllers
                 hotelUid = _hotel.hotelUid,
                 startDate = df.startDate.ToString("yyyy-MM-dd"),
                 endDate = df.endDate.ToString("yyyy-MM-dd"),
-                discount = _loyalty.discount,
+                discount = q,
                 status = "PAID",
                 payment = new
                 {
@@ -521,45 +521,67 @@ namespace gateway.Controllers
         [HttpDelete("api/v1/reservations/{reservationUid}")]
         public async Task<IActionResult> CancelReservation(Guid reservationUid)
         {
-            //обращение к reservation -> статус по uuid: CANCELED
             var client = _clientFactory.CreateClient();
             client.DefaultRequestHeaders.Add("X-User-Name", username);
-            var response = await client.PatchAsync(
-                $"http://reservation:8060/api/v1/reservation/{reservationUid}", null
-                );
-            var content = await response.Content.ReadAsStringAsync();
-            if (!response.IsSuccessStatusCode)
-            {
-               // Console.WriteLine("!Reservation====response 1");
 
-                return NotFound(content);
+            string? content;
+            try
+            {
+                var response = await client.PatchAsync($"http://reservation:8060/api/v1/reservation/{reservationUid}", null);
+                content = await response.Content.ReadAsStringAsync();
+                if (!response.IsSuccessStatusCode)
+                {
+                    return NotFound(content);
+                }
+            }
+            catch
+            {
+                return StatusCode(500);
             }
 
-            reservation _res = JsonSerializer.Deserialize<reservation>(content);
+            var _res = JsonSerializer.Deserialize<reservation>(content);
 
-            var response2 = await client.PatchAsync(
-                $"http://payment:8050/api/v1/payment/{_res.paymentUid}", null
-                );
-            var content2 = await response2.Content.ReadAsStringAsync();
-            if (!response2.IsSuccessStatusCode)
+            try
             {
-                //Console.WriteLine("Reservation====response 2");
-                return NotFound(content2);
+                var response2 = await client.PatchAsync($"http://payment:8050/api/v1/payment/{_res.paymentUid}", null);
+                if (!response2.IsSuccessStatusCode)
+                {
+                    return NotFound(await response2.Content.ReadAsStringAsync());
+                }
+            }
+            catch
+            {
+                return StatusCode(500);
             }
 
-
-            var response3 = await client.PatchAsync(
-                "http://loyalty:8070/api/v1/loyaltyDecrease", null
-                );
-            var content3 = await response3.Content.ReadAsStringAsync();
-            if (!response3.IsSuccessStatusCode)
+            try
             {
-                //Console.WriteLine("!!!!!Reservation====response 2");
-                return NotFound(content3);
+
+                var message = new { username = username };
+                var jsonMessage = JsonSerializer.Serialize(message);
+                var body = Encoding.UTF8.GetBytes(jsonMessage);
+                Console.WriteLine($"Sent to rabbit{body}");
+
+                using (var connection = new ConnectionFactory { HostName = "rabbitmq", Port = 5672 }.CreateConnection())
+                using (var channel = connection.CreateModel())
+                {
+
+                    channel.QueueDeclare(queue: "LoyaltyQueue", durable: true, exclusive: false, autoDelete: false, arguments: null);
+                    var properties = channel.CreateBasicProperties();
+                    properties.Persistent = true;
+
+                    channel.BasicPublish(exchange: "", routingKey: "LoyaltyQueue", basicProperties: properties, body: body);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Ошибка отправки в RabbitMQ: {ex.Message}");
             }
 
+            // 4. Завершаем запрос
             return NoContent();
         }
+
 
         [HttpGet("api/v1/me")]
         public async Task<IActionResult> ReservationMe()

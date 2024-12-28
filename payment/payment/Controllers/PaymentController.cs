@@ -1,20 +1,28 @@
 
 using payment.DB;
 using Microsoft.AspNetCore.Mvc;
+using RabbitMQ.Client.Events;
+using RabbitMQ.Client;
+using System.Text.Json;
+using System.Text;
 
 namespace payment.Controllers
 {
+   
     [ApiController]
 
     public class PaymentController : ControllerBase
     {
+        
         dbHandler handler;
+
         private readonly ILogger<PaymentController> _logger;
 
         public PaymentController(ILogger<PaymentController> logger)
         {
             _logger = logger;
             handler = new dbHandler(null);
+
         }
 
         [HttpGet("/manage/health")]

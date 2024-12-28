@@ -1,6 +1,7 @@
 
 using gateway.RabbitMq;
 using Microsoft.Extensions.Options;
+using RabbitMQ.Client;
 
 namespace gateway
 {
@@ -24,9 +25,10 @@ namespace gateway
                 var options = provider.GetRequiredService<IOptions<CircuitBreakerOptions>>().Value;
                 return new CircuitBreaker(options.FailureThreshold, TimeSpan.FromSeconds(options.TimeoutSeconds));
             });
-            builder.Services.AddHostedService<FailedRequestProcessor>();
 
-            //builder.Services.AddScoped<IRabbitMqService, RabbitMqService>();
+            builder.Services.AddSingleton<RabbitMqService>();  
+            //builder.Services.AddSingleton<CancelPaymentHandler>();
+            builder.Services.AddScoped<IRabbitMqService, RabbitMqService>();
 
 
             var app = builder.Build();

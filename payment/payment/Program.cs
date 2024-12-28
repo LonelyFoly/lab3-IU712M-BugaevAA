@@ -1,3 +1,4 @@
+using payment.Controllers;
 
 namespace payment
 {
@@ -13,7 +14,7 @@ namespace payment
             // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();
-
+            builder.Services.AddHostedService<RabbitMqListener>();
             var app = builder.Build();
 
             // Configure the HTTP request pipeline.

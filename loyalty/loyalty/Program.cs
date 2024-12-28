@@ -1,4 +1,6 @@
 
+using loyalty.Controllers;
+
 namespace loyalty
 {
     public class Program
@@ -13,7 +15,8 @@ namespace loyalty
             // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();
-
+            builder.Services.AddHttpClient();
+            builder.Services.AddHostedService<LoyaltyQueueListener>();
             var app = builder.Build();
 
             // Configure the HTTP request pipeline.

@@ -1,4 +1,6 @@
-﻿namespace loyalty
+﻿using System.Text.Json.Serialization;
+
+namespace loyalty
 {
     public class loyalty
     {
@@ -23,5 +25,10 @@
         {
 
         }
+    }
+    public class PaymentMessage
+    {
+
+        public string username { get; set; }
     }
 }

@@ -69,6 +69,28 @@ namespace payment.DB
                 return null;
             }
         }
+        public bool deletePayment(string paymentUid)
+        {
+            using (ApplicationContext db = getDb())
+            {
+                var Payments = db.payment.ToList();
+                payment payment = null;
+                foreach (payment u in Payments)
+                {
+                    if (u.paymentUid.ToString() == paymentUid)
+                        payment = u;
+                }
+
+                if (payment != null)
+                {
+                    db.payment.Remove(payment);
+                    db.SaveChanges();
+                }
+
+                return payment != null;
+            }
+
+        }
 
         public payment getPayment(Guid paymentUid)
         {
